@@ -3,6 +3,8 @@
 
 #include <memory>
 #include <stdint.h>
+#include <vector>
+
 
 namespace NP {
 
@@ -80,6 +82,10 @@ namespace NP {
 				return count;
 			}
 
+			bool is_empty() const {
+				return size() == 0;
+			}
+
 			void add(std::size_t idx)
 			{
 				if (idx / 64 >= the_set.size())
@@ -117,6 +123,53 @@ namespace NP {
 				stream << "}";
 
 				return stream;
+			}
+
+			class Iterator {
+				typedef std::size_t Job_index;
+				private:
+					Job_index current_index;
+					Index_set* iterating_set;
+				
+				public:
+					Iterator (Index_set* set) : iterating_set(set) {
+					current_index = -1;
+					if (set == nullptr) return;
+					// Find first element in the set, iterator is null otherwise
+					for (std::size_t i = 0; i < set->the_set.size() * 64; ++i) {
+							if (set->contains(i)) {
+								current_index = i;
+								break;
+							}
+						}
+					}
+
+					Job_index& operator*() {
+						return current_index;
+					}
+					Iterator& operator++() {
+						Job_index new_index = -1;
+						for (std::size_t i = current_index+1; i < iterating_set->the_set.size() * 64; ++i) {
+								if (iterating_set->contains(i)) {
+									new_index = i;
+									break;
+								}
+							}
+						current_index = new_index;
+						return *this;
+					}
+					
+					bool operator!=(const Iterator& other) {
+						return current_index != other.current_index;
+					}
+			};
+
+			Iterator begin() {
+				return Iterator(this);
+			}
+
+			Iterator end() {
+				return Iterator(nullptr);
 			}
 
 			private:

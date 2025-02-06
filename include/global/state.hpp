@@ -62,7 +62,7 @@ namespace NP {
 			// TODO: Might cut these two out as they are computable from lp and probably only used once
 			Job_set guaranteed_wait_set; 
 			Job_set exhaustive_wait_set;
-			std::vector<const Job<Time>*> lower_priority;
+			std::set<const Job<Time>*> lower_priority;
 
 			struct Running_job {
 				Job_index idx;
@@ -93,9 +93,17 @@ namespace NP {
 				, certain_jobs{}
 				, earliest_certain_successor_job_disptach{ Time_model::constants<Time>::infinity() }
 				, earliest_certain_gang_source_job_disptach{ state_space_data.get_earliest_certain_gang_source_job_release() }
-				, polling_point_interval {Interval<Time>(state_space_data.get_earliest_job_arrival(), state_space_data.get_earliest_certain_gang_source_job_release())}
 			{
 				assert(core_avail.size() > 0);
+				Time earliest_certain_release = Time_model::constants<Time>::infinity();
+				for (auto it = state_space_data.jobs_by_earliest_arrival.begin();
+					it != state_space_data.jobs_by_earliest_arrival.end();
+					it++)
+				{ 
+					const Job<Time>& j = *it->second;
+					earliest_certain_release = std::min(earliest_certain_release, j.latest_arrival());
+				}
+				polling_point_interval = Interval<Time>(state_space_data.get_earliest_job_arrival(), earliest_certain_release);
 			}
 
 			// transition: new state by scheduling a job 'j' in an existing state 'from'
@@ -140,7 +148,7 @@ namespace NP {
 				last_job_prio = state_space_data.jobs[j].get_priority();
 				
 				// NOTE: must be done after updating last job prio
-				update_lp(ready_succ_jobs);
+				update_lp(ready_succ_jobs, state_space_data, scheduled_jobs);
 				update_gws_ews();
 
 				DM("*** new state: constructed " << *this << std::endl);
@@ -175,6 +183,11 @@ namespace NP {
 					ftimes = Interval<Time>{ 0, Time_model::constants<Time>::infinity() };
 					return false;
 				}
+			}
+
+			const std::unique_ptr<Job_set> get_bws(const Job_index j) const {
+				std::unique_ptr<Job_set> gws = std::make_unique<Job_set>(guaranteed_wait_set, j);
+				return std::move(gws);
 			}
 
 			const Job_set* get_gws() const {
@@ -352,12 +365,32 @@ namespace NP {
 			}
 
 		private:
-			void update_lp(const std::vector<const Job<Time>*>& ready_succ_jobs) {
+			bool ews_contains(Job_index j) {
+				return exhaustive_wait_set.contains(j);
+			}
+			
+			bool gws_empty() {
+				return guaranteed_wait_set.is_empty();
+			}
+			
+			void update_lp(const std::vector<const Job<Time>*>& ready_succ_jobs, const State_space_data<Time>& state_space_data,
+							const Job_set& scheduled_jobs) {
 				for (auto job : ready_succ_jobs) {
-					if (job->get_priority() < last_job_prio) {
-						lower_priority.push_back(job);
+					if (job->get_priority() > last_job_prio) {
+						lower_priority.insert(job);
 					}
 				}
+				for (auto it = state_space_data.jobs_by_earliest_arrival.begin();
+					it != state_space_data.jobs_by_earliest_arrival.end();
+					it++)
+				{ 
+					const Job<Time>& j = *it->second;
+					if (scheduled_jobs.contains(j.get_job_index())) continue;
+					if (j.get_priority() > last_job_prio) {
+						lower_priority.insert(&j);
+					}
+				}
+				
 				return;
 			}
 

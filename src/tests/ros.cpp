@@ -17,11 +17,9 @@ TEST_CASE("Index set: Set Subtract") {
 
         // Control set
         Index_set d;
-
-        // Fill sets
         a.add(1);
         a.add(2);
-        a.add(4);
+        a.add(4);	
         b.add(2);
         b.add(3);
 
@@ -92,4 +90,20 @@ TEST_CASE("Index set: Set Subtract") {
         CHECK(*c == d);
     }
 
+
+}
+
+TEST_CASE("Index set: Iterator") {
+    Index_set a;
+    
+    a.add(1);
+    a.add(2);
+    a.add(4);
+
+    std::size_t values[] = {1, 2, 4};
+    std::size_t idx2 = 0;
+    for (auto idx : a) {
+        CHECK(idx == values[idx2]);
+        idx2++;
+    }
 }

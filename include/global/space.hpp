@@ -452,9 +452,7 @@ namespace NP {
 
 			template <typename... Args>
 			Node& new_node_at(Nodes_map_accessor& acc, Args&&... args)
-			{
-				assert(!acc.empty());
-				Node_ref n = alloc_node(std::forward<Args>(args)...);
+			{costforward<Args>(args)...);
 				DM("new node - global " << n << std::endl);
 				// add node to nodes_by_key map.
 				insert_cache_node(acc, n);
@@ -582,6 +580,19 @@ namespace NP {
 				return std::min(t_wos, t_ws);
 			}
 
+			// find next time by which a job is certainly ready in system state 's'
+			Time next_certain_job_ready_time(const Node& n, const State& s, const std::unique_ptr<Job_set> wait_set) const
+			{
+				Time release = Time_model::constants<Time>::infinity();
+				for (Job_index job : *wait_set) {
+					release = std::min(state_space_data.jobs[job].latest_arrival(), release);
+				}
+				// Time t_ws = std::min(s.next_certain_gang_source_job_disptach(), s.next_certain_successor_jobs_disptach());
+				// Time t_wos = n.get_next_certain_sequential_source_job_release();
+				return release;
+			}
+
+
 			// assumes j is ready
 			// NOTE: we don't use Interval<Time> here because the
 			//       Interval c'tor sorts its arguments.
@@ -659,13 +670,25 @@ namespace NP {
 #endif
 				for (State* s : *n_states)
 				{
+					const auto& costs = j.get_all_costs();
 					// check for all possible parallelism levels of the moldable gang job j (if j is not gang or not moldable than min_paralellism = max_parallelism and costs only constains a single element).
 					//for (unsigned int p = j.get_max_parallelism(); p >= j.get_min_parallelism(); p--)
 					for (auto it = costs.rbegin(); it != costs.rend(); it++)
 					{
 						unsigned int p = it->first;
-						// Calculate t_wc and t_high
+						Job_index j_idx = j.get_job_index();
+						// Calculate t_wc and t_high./n
+						auto bws_wc = s->get_bws(j_idx);
+						auto bws_high = = s->get_bws(j_idx);
+						// If j in EWS twc and thigh based on BWS
+						Time t_wc_bws;
+						Time t_high_bws;
+						if (s->ews_contains(j_idx)) {
+							t_wc_bws = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s, std::move(bws_wc)));
+							t_high_bws
+						}
 						Time t_wc = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s));
+
 
 						Time t_high_succ = state_space_data.next_certain_higher_priority_successor_job_ready_time(n, *s, j, p, t_wc + 1);
 						Time t_high_gang = state_space_data.next_certain_higher_priority_gang_source_job_ready_time(n, *s, j, p, t_wc + 1);
@@ -820,79 +843,83 @@ namespace NP {
 
 				const State* current_state = n.get_first_state();
 				
-				for (auto it = state_space_data.jobs_by_earliest_arrival.lower_bound(t_min);
-					it != state_space_data.jobs_by_earliest_arrival.end();
-					it++)
-				{
-					const Job<Time>& j = *it->second;
-					if (j.earliest_arrival() > upbnd_t_wc)
-						break;
-
-					if (!unfinished(n, j))
-						continue;
-
-					RDM(*(current_state->get_gws()));
-					RDM(*(current_state->get_ews()));
-
-					Time t_high_wos = state_space_data.next_certain_higher_priority_seq_source_job_release(n, j, upbnd_t_wc + 1);
-					
-					found_one |= dispatch(n, j, upbnd_t_wc, t_high_wos);
-				}
-				
-
-				if (!found_one && !all_jobs_scheduled(n)) {
-					// out of options and we didn't schedule all jobs
-					observed_deadline_miss = true;
-					aborted = true;
-				}
-
-				// //check all jobs that may be eligible to be dispatched next
-				// // part 1: check source jobs (i.e., jobs without prcedence constraints) that are potentially eligible
 				// for (auto it = state_space_data.jobs_by_earliest_arrival.lower_bound(t_min);
 				// 	it != state_space_data.jobs_by_earliest_arrival.end();
 				// 	it++)
 				// {
 				// 	const Job<Time>& j = *it->second;
-				// 	DM(j << " (" << j.get_job_index() << ")" << std::endl);
-				// 	// stop looking once we've left the window of interest
 				// 	if (j.earliest_arrival() > upbnd_t_wc)
 				// 		break;
 
 				// 	if (!unfinished(n, j))
 				// 		continue;
 
-				// 	Time t_high_wos = state_space_data.next_certain_higher_priority_seq_source_job_release(n, j, upbnd_t_wc + 1);
-				// 	// if there is a higher priority job that is certainly ready before job j is released at the earliest, 
-				// 	// then j will never be the next job dispached by the scheduler
-				// 	if (t_high_wos <= j.earliest_arrival())
-				// 		continue;
-				// 	found_one |= dispatch(n, j, upbnd_t_wc, t_high_wos);
-				// }
-				// // part 2: check ready successor jobs (i.e., jobs with precedence constraints that are completed) that are potentially eligible
-				// for (auto it = n.get_ready_successor_jobs().begin();
-				// 	it != n.get_ready_successor_jobs().end();
-				// 	it++)
-				// {
-				// 	const Job<Time>& j = **it;
-				// 	DM(j << " (" << j.get_job_index() << ")" << std::endl);
-				// 	// stop looking once we've left the window of interest
-				// 	if (j.earliest_arrival() > upbnd_t_wc)
-				// 		continue;
-
-				// 	// Since this job is is recorded as ready in the state, it better
-				// 	// be incomplete...
-				// 	assert(unfinished(n, j));
+				// 	RDM(*(current_state->get_gws()));
+				// 	RDM(*(current_state->get_ews()));
 
 				// 	Time t_high_wos = state_space_data.next_certain_higher_priority_seq_source_job_release(n, j, upbnd_t_wc + 1);
-				// 	// if there is a higher priority job that is certainly ready before job j is released at the earliest, 
-				// 	// then j will never be the next job dispached by the scheduler
-				// 	if (t_high_wos <= j.earliest_arrival())
-				// 		continue;
+					
 				// 	found_one |= dispatch(n, j, upbnd_t_wc, t_high_wos);
 				// }
+				
+
+				// if (!found_one && !all_jobs_scheduled(n)) {
+				// 	// out of options and we didn't schedule all jobs
+				// 	observed_deadline_miss = true;
+				// 	aborted = true;
+				// }
+
+				//check all jobs that may be eligible to be dispatched next
+				// part 1: check source jobs (i.e., jobs without prcedence constraints) that are potentially eligible
+				for (auto it = state_space_data.jobs_by_earliest_arrival.lower_bound(t_min);
+					it != state_space_data.jobs_by_earliest_arrival.end();
+					it++)
+				{
+					const Job<Time>& j = *it->second;
+					DM(j << " (" << j.get_job_index() << ")" << std::endl);
+					// stop looking once we've left the window of interest
+					if (j.earliest_arrival() > upbnd_t_wc)
+						break;
+
+					if (!unfinished(n, j))
+						continue;
+
+					Time t_high_wos = state_space_data.next_certain_higher_priority_seq_source_job_release(n, j, upbnd_t_wc + 1);
+					// if there is a higher priority job that is certainly ready before job j is released at the earliest, 
+					// then j will never be the next job dispached by the scheduler
+					if (t_high_wos <= j.earliest_arrival())
+						continue;
+					found_one |= dispatch(n, j, upbnd_t_wc, t_high_wos);
+				}
+				// part 2: check ready successor jobs (i.e., jobs with precedence constraints that are completed) that are potentially eligible
+				for (auto it = n.get_ready_successor_jobs().begin();
+					it != n.get_ready_successor_jobs().end();
+					it++)
+				{
+					const Job<Time>& j = **it;
+					DM(j << " (" << j.get_job_index() << ")" << std::endl);
+					// stop looking once we've left the window of interest
+					if (j.earliest_arrival() > upbnd_t_wc)
+						continue;
+
+					// Since this job is is recorded as ready in the state, it better
+					// be incomplete...
+					assert(unfinished(n, j));
+
+					Time t_high_wos = state_space_data.next_certain_higher_priority_seq_source_job_release(n, j, upbnd_t_wc + 1);
+					// if there is a higher priority job that is certainly ready before job j is released at the earliest, 
+					// then j will never be the next job dispached by the scheduler
+					if (t_high_wos <= j.earliest_arrival())
+						continue;
+					found_one |= dispatch(n, j, upbnd_t_wc, t_high_wos);
+				}
 
 				// check for a dead end
-		
+				if (!found_one && !all_jobs_scheduled(n)) {
+					// out of options and we didn't schedule all jobs
+					observed_deadline_miss = true;
+					aborted = true;
+				}
 			}
 
 			// naive: no state merging
