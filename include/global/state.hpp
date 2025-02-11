@@ -117,8 +117,8 @@ namespace NP {
 				const std::vector<const Job<Time>*>& ready_succ_jobs,
 				const State_space_data<Time>& state_space_data,
 				Time next_source_job_rel,
-				unsigned int ncores = 1,
-				bool new_pp = false)
+				Interval<Time> new_pp = {1,1},
+				unsigned int ncores = 1)
 			{
 				const Successors& successors_of = state_space_data.successors_suspensions;
 				const Predecessors& predecessors_of = state_space_data.predecessors_suspensions;
@@ -143,7 +143,7 @@ namespace NP {
 				update_earliest_certain_gang_source_job_disptach(next_source_job_rel, scheduled_jobs, state_space_data);
 
 				// Compute what the polling point must have been if this job is the one that was dispatched
-				update_polling_point(from, new_pp, start_times);
+				polling_point_interval = new_pp;
 
 				last_job_prio = state_space_data.jobs[j].get_priority();
 				
@@ -364,14 +364,14 @@ namespace NP {
 				out << "}";
 			}
 
-		private:
 			bool ews_contains(Job_index j) {
 				return exhaustive_wait_set.contains(j);
 			}
-			
-			bool gws_empty() {
+			bool is_gws_empty() {
 				return guaranteed_wait_set.is_empty();
 			}
+		private:
+			
 			
 			void update_lp(const std::vector<const Job<Time>*>& ready_succ_jobs, const State_space_data<Time>& state_space_data,
 							const Job_set& scheduled_jobs) {

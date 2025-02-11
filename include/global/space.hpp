@@ -547,7 +547,7 @@ namespace NP {
 								Node& next =
 									new_node(new_n, j, j.get_job_index(), state_space_data, 0, 0, 0);
 								//const CoreAvailability empty_cav = {};
-								State& next_s = new_state(*new_n.get_last_state(), j.get_job_index(), frange, frange, new_n.get_scheduled_jobs(), new_n.get_jobs_with_pending_successors(), new_n.get_ready_successor_jobs(), state_space_data, new_n.get_next_certain_source_job_release(), pmin);
+								State& next_s = new_state(*new_n.get_last_state(), j.get_job_index(), frange, frange, new_n.get_scheduled_jobs(), new_n.get_jobs_with_pending_successors(), new_n.get_ready_successor_jobs(), state_space_data, new_n.get_next_certain_source_job_release(), Interval<Time>{0, 0});
 								next.add_state(&next_s);
 								num_states++;
 
@@ -590,6 +590,19 @@ namespace NP {
 				// Time t_ws = std::min(s.next_certain_gang_source_job_disptach(), s.next_certain_successor_jobs_disptach());
 				// Time t_wos = n.get_next_certain_sequential_source_job_release();
 				return release;
+			}
+
+			Time next_certain_higher_priority_waitset_job_ready_time(const Job<Time>& reference, const State& s, std::unique_ptr<Job_set> waitset) {
+				Time thigh = Time_model::constants<Time>::infinity();
+				auto ready_min = state_space_data.earliest_ready_time(s, reference);
+				for (auto job : *waitset) {
+					if (job == reference.get_job_index()) continue;
+					const Job<Time>& other = state_space_data.jobs[job];
+					if (other.higher_priority_than(reference)) {
+						thigh = std::min(thigh, state_space_data.latest_ready_time(s, ready_min, other, reference));
+					}
+				}
+				return thigh;
 			}
 
 
@@ -677,22 +690,28 @@ namespace NP {
 					{
 						unsigned int p = it->first;
 						Job_index j_idx = j.get_job_index();
-						// Calculate t_wc and t_high./n
-						auto bws_wc = s->get_bws(j_idx);
-						auto bws_high = = s->get_bws(j_idx);
-						// If j in EWS twc and thigh based on BWS
-						Time t_wc_bws;
-						Time t_high_bws;
-						if (s->ews_contains(j_idx)) {
-							t_wc_bws = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s, std::move(bws_wc)));
-							t_high_bws
-						}
+
+
+
+						// Twc and Thigh over all jobs in RP
 						Time t_wc = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s));
-
-
 						Time t_high_succ = state_space_data.next_certain_higher_priority_successor_job_ready_time(n, *s, j, p, t_wc + 1);
 						Time t_high_gang = state_space_data.next_certain_higher_priority_gang_source_job_ready_time(n, *s, j, p, t_wc + 1);
 						Time t_high = std::min(t_high_wos, std::min(t_high_gang, t_high_succ));
+
+						// If j in EWS then twc and thigh are based on BWS
+						Time t_wc_bws;
+						Time t_high_bws;
+						std::pair<Time, Time> _st2;
+						if (s->ews_contains(j_idx)) {
+							auto bws_wc = s->get_bws(j_idx);
+							auto bws_high = s->get_bws(j_idx);
+
+							t_wc_bws = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s, std::move(bws_wc)));
+							t_high_bws = next_certain_higher_priority_waitset_job_ready_time(j, *s, std::move(bws_high));
+
+							_st2 = start_times(*s, j, t_wc_bws, t_high_bws, Time_model::constants<Time>::infinity());
+						}
 
 						// If j can execute on ncores+k cores, then 
 						// the scheduler will start j on ncores only if 
@@ -785,17 +804,48 @@ namespace NP {
 								}
 							}
 							// If there is no node yet, create one.
-							if (next == nullptr)
-								next = &(new_node(n, j, j.get_job_index(), state_space_data, state_space_data.earliest_possible_job_release(n, j), state_space_data.earliest_certain_source_job_release(n, j), state_space_data.earliest_certain_sequential_source_job_release(n, j)));
+						if (next == nullptr)
+							next = &(new_node(n, j, j.get_job_index(), state_space_data, state_space_data.earliest_possible_job_release(n, j), state_space_data.earliest_certain_source_job_release(n, j), state_space_data.earliest_certain_sequential_source_job_release(n, j)));
 						}
 #endif
 						// next should always exist at this point, possibly without states in it
 						// create a new state resulting from scheduling j in state s on p cores and try to merge it with an existing state in node 'next'.							
-						new_or_merge_state(*next, *s, j.get_job_index(),
-							Interval<Time>{_st}, ftimes, next->get_scheduled_jobs(), next->get_jobs_with_pending_successors(), next->get_ready_successor_jobs(), state_space_data, next->get_next_certain_source_job_release(), p);
 						
 						// TODO: Implement ROS dispatching
 						// If two states are made remember to call new_or_merge_state twice
+						// _st = {EST(Rp), LST(Rp)}, _st2 = {EST(BWS), LST(BWS)}
+						if (s->ews_contains(j_idx)) {
+							if (!(s->is_gws_empty())) {
+								// LST = min {twc(bws), thigh(bws)}
+								_st.second = _st2.second;
+
+								// Not empty, so simple state
+								new_or_merge_state(*next, *s, j.get_job_index(),
+								Interval<Time>{_st}, ftimes, next->get_scheduled_jobs(), next->get_jobs_with_pending_successors(), next->get_ready_successor_jobs(), state_space_data, next->get_next_certain_source_job_release(), s->polling_point());
+							} else {
+								// Empty, so possibly double state
+								// LST = max {LST(BWS), LST(RP)}
+								_st2.second = std::max(_st2.second, _st.second);
+								if (_st.first <= _st.second) {
+									// State with pp change
+									Node_ref next2;
+									if (be_naive) next2 = &(new_node(n, j, j.get_job_index(), state_space_data, state_space_data.earliest_possible_job_release(n, j), state_space_data.earliest_certain_source_job_release(n, j), state_space_data.earliest_certain_sequential_source_job_release(n, j)));
+									new_or_merge_state(*next2, *s, j.get_job_index(),
+									Interval<Time>{_st2}, ftimes, next->get_scheduled_jobs(), next->get_jobs_with_pending_successors(), next->get_ready_successor_jobs(), state_space_data, next->get_next_certain_source_job_release(), Interval<Time>{_st});
+#ifdef CONFIG_COLLECT_SCHEDULE_GRAPH
+									edges.emplace_back(&j, &n, next2, ftimes);
+#endif
+								}
+								// State without pp change
+								new_or_merge_state(*next, *s, j.get_job_index(),
+								Interval<Time>{_st2}, ftimes, next->get_scheduled_jobs(), next->get_jobs_with_pending_successors(), next->get_ready_successor_jobs(), state_space_data, next->get_next_certain_source_job_release(), s->polling_point());
+							}
+						} else {
+							// Job not in EWS, so definitely new polling point
+							new_or_merge_state(*next, *s, j.get_job_index(),
+							Interval<Time>{_st}, ftimes, next->get_scheduled_jobs(), next->get_jobs_with_pending_successors(), next->get_ready_successor_jobs(), state_space_data, next->get_next_certain_source_job_release(), Interval<Time>{_st});
+						}
+
 
 						// make sure we didn't skip any jobs which would then certainly miss its deadline
 						// only do that if we stop the analysis when a deadline miss is found 
@@ -818,6 +868,7 @@ namespace NP {
 
 				return dispatched_one;
 			}
+
 
 			void explore(const Node& n)
 			{

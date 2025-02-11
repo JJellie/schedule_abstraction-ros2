@@ -344,6 +344,7 @@ namespace NP {
 				return when;
 			}
 
+
 			// Find the earliest possible job release of all jobs in a node except for the ignored job
 			Time earliest_possible_job_release(
 				const Node& n,
