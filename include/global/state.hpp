@@ -362,6 +362,8 @@ namespace NP {
 					first = false;
 				}
 				out << "}";
+				out << "\\n";
+				out << polling_point_interval;
 			}
 
 			bool ews_contains(Job_index j) {

@@ -722,9 +722,23 @@ namespace NP {
 
 						DM("=== t_high = " << t_high << ", t_wc = " << t_wc << std::endl);
 						auto _st = start_times(*s, j, t_wc, t_high, t_avail, p);
-						if (_st.first > t_wc || _st.first >= t_high || _st.first >= t_avail)
-							continue; // nope, not next job that can be dispatched in state s, try the next state.
 
+						Time lst_rp = _st.second;
+						// If job is not in EWS, standard eligibility condition holds
+						if (!(s->ews_contains(j_idx))) {
+							if (_st.first > t_wc || _st.first >= t_high || _st.first >= t_avail)
+								continue; // nope, not next job that can be dispatched in state s, try the next state.
+						} else {
+							// Non-standard elibility condition depending on gws
+							if (s->is_gws_empty()) {
+								// Eligibility based on bws and rp
+								_st.second = std::max(_st2.second, _st.second);
+								if (_st.first > _st.second) continue;
+							} else {
+								//Elibility based on bws
+								if (_st.first > t_wc_bws || _st.first >= t_high_bws) continue;
+							}
+						}
 						//calculate the job finish time interval
 						auto exec_time = it->second;
 						Time eft = _st.first + exec_time.min();
@@ -825,15 +839,16 @@ namespace NP {
 							} else {
 								// Empty, so possibly double state
 								// LST = max {LST(BWS), LST(RP)}
-								_st2.second = std::max(_st2.second, _st.second);
-								if (_st.first <= _st.second) {
+								_st2.second = lst_rp;
+								if (_st.first <= std::min(t_wc, t_high -1)) {
 									// State with pp change
+									Interval<Time> ftimes2 = calculate_abort_time(j, _st2.first, _st2.second, _st2.first + exec_time.min(), _st2.second + exec_time.max());
 									Node_ref next2;
 									if (be_naive) next2 = &(new_node(n, j, j.get_job_index(), state_space_data, state_space_data.earliest_possible_job_release(n, j), state_space_data.earliest_certain_source_job_release(n, j), state_space_data.earliest_certain_sequential_source_job_release(n, j)));
 									new_or_merge_state(*next2, *s, j.get_job_index(),
-									Interval<Time>{_st2}, ftimes, next->get_scheduled_jobs(), next->get_jobs_with_pending_successors(), next->get_ready_successor_jobs(), state_space_data, next->get_next_certain_source_job_release(), Interval<Time>{_st});
+									Interval<Time>{_st2}, ftimes2, next->get_scheduled_jobs(), next->get_jobs_with_pending_successors(), next->get_ready_successor_jobs(), state_space_data, next->get_next_certain_source_job_release(), Interval<Time>{_st2});
 #ifdef CONFIG_COLLECT_SCHEDULE_GRAPH
-									edges.emplace_back(&j, &n, next2, ftimes);
+									edges.emplace_back(&j, &n, next2, ftimes2);
 #endif
 								}
 								// State without pp change
