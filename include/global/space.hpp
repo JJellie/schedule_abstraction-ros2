@@ -909,31 +909,6 @@ namespace NP {
 
 				const State* current_state = n.get_first_state();
 				
-				// for (auto it = state_space_data.jobs_by_earliest_arrival.lower_bound(t_min);
-				// 	it != state_space_data.jobs_by_earliest_arrival.end();
-				// 	it++)
-				// {
-				// 	const Job<Time>& j = *it->second;
-				// 	if (j.earliest_arrival() > upbnd_t_wc)
-				// 		break;
-
-				// 	if (!unfinished(n, j))
-				// 		continue;
-
-				// 	RDM(*(current_state->get_gws()));
-				// 	RDM(*(current_state->get_ews()));
-
-				// 	Time t_high_wos = state_space_data.next_certain_higher_priority_seq_source_job_release(n, j, upbnd_t_wc + 1);
-					
-				// 	found_one |= dispatch(n, j, upbnd_t_wc, t_high_wos);
-				// }
-				
-
-				// if (!found_one && !all_jobs_scheduled(n)) {
-				// 	// out of options and we didn't schedule all jobs
-				// 	observed_deadline_miss = true;
-				// 	aborted = true;
-				// }
 
 				//check all jobs that may be eligible to be dispatched next
 				// part 1: check source jobs (i.e., jobs without prcedence constraints) that are potentially eligible
