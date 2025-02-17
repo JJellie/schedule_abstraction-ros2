@@ -5,6 +5,9 @@ nptest
 *.dot
 *.pdf
 
+*.rta*
+*.width*
+
 debug/
 comparison/
 build/
