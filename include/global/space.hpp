@@ -843,10 +843,12 @@ namespace NP {
 								if (_st.first <= std::min(t_wc, t_high -1)) {
 									// State with pp change
 									Interval<Time> ftimes2 = calculate_abort_time(j, _st2.first, _st2.second, _st2.first + exec_time.min(), _st2.second + exec_time.max());
+									update_finish_times(j, ftimes2);
 									Node_ref next2;
 									if (be_naive) next2 = &(new_node(n, j, j.get_job_index(), state_space_data, state_space_data.earliest_possible_job_release(n, j), state_space_data.earliest_certain_source_job_release(n, j), state_space_data.earliest_certain_sequential_source_job_release(n, j)));
 									new_or_merge_state(*next2, *s, j.get_job_index(),
 									Interval<Time>{_st2}, ftimes2, next->get_scheduled_jobs(), next->get_jobs_with_pending_successors(), next->get_ready_successor_jobs(), state_space_data, next->get_next_certain_source_job_release(), Interval<Time>{_st2});
+
 #ifdef CONFIG_COLLECT_SCHEDULE_GRAPH
 									edges.emplace_back(&j, &n, next2, ftimes2);
 #endif
