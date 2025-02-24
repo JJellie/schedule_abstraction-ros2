@@ -249,11 +249,15 @@ namespace NP {
 				return true;
 			}
 
+			bool wait_set_overlap(const Job_set* other_gws, const Job_set* other_ews) const {
+				return guaranteed_wait_set == *other_gws && exhaustive_wait_set == *other_ews;
+			}
+
 			// check if 'other' state can merge with this state
 			bool can_merge_with(const Schedule_state<Time>& other, bool conservative, bool use_job_finish_times = false) const
 			{
 				bool other_in_this;
-				if (core_avail_overlap(other.core_avail, conservative, other_in_this))
+				if (core_avail_overlap(other.core_avail, conservative, other_in_this) && wait_set_overlap(other.get_gws(), other.get_ews()))
 				{
 					if (use_job_finish_times)
 						return check_finish_times_overlap(other.job_finish_times, conservative, other_in_this);
@@ -283,7 +287,7 @@ namespace NP {
 				if (!can_merge_with(other, conservative, use_job_finish_times))
 					return false;
 
-				merge(other.core_avail, other.job_finish_times, other.certain_jobs, other.earliest_certain_successor_job_disptach);
+				merge(other.core_avail, other.job_finish_times, other.certain_jobs, other.earliest_certain_successor_job_disptach, other.polling_point());
 
 				DM("+++ merged " << other << " into " << *this << std::endl);
 				return true;
@@ -293,7 +297,8 @@ namespace NP {
 				const Core_availability& cav,
 				const Job_finish_times& jft,
 				const std::vector<Running_job>& cert_j,
-				Time ecsj_ready_time)
+				Time ecsj_ready_time,
+				const Interval<Time>& polling_point)
 			{
 				for (int i = 0; i < core_avail.size(); i++)
 					core_avail[i] |= cav[i];
@@ -324,6 +329,8 @@ namespace NP {
 
 				// merge job_finish_times
 				widen_finish_times(jft);
+
+				widen_polling_point(polling_point);
 
 				// update certain ready time of jobs with predecessors
 				earliest_certain_successor_job_disptach = std::max(earliest_certain_successor_job_disptach, ecsj_ready_time);
@@ -671,6 +678,10 @@ namespace NP {
 						state_it++;
 				}
 				return all_jobs_intersect;
+			}
+
+			void widen_polling_point(const Interval<Time> other_pp) {
+				polling_point_interval.merge(other_pp);
 			}
 
 			void widen_finish_times(const Job_finish_times& from_pwj)

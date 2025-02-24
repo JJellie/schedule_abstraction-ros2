@@ -682,6 +682,7 @@ namespace NP {
 				// be added to that same node. 
 				// If such a node already exists, we keep a reference to it
 				Node_ref next = nullptr;
+				Node_ref next2 = nullptr;
 				DM("--- global:dispatch() " << n << ", " << j << ", " << t_wc_wos << ", " << t_high_wos << std::endl);
 
 				bool dispatched_one = false;
@@ -855,8 +856,30 @@ namespace NP {
 									// State with pp change
 									Interval<Time> ftimes2 = calculate_abort_time(j, _st2.first, _st2.second, _st2.first + exec_time.min(), _st2.second + exec_time.max());
 									update_finish_times(j, ftimes2);
-									Node_ref next2;
-									if (be_naive) next2 = &(new_node(n, j, j.get_job_index(), state_space_data, state_space_data.earliest_possible_job_release(n, j), state_space_data.earliest_certain_source_job_release(n, j), state_space_data.earliest_certain_sequential_source_job_release(n, j)));
+									// If be_naive, a new node and a new state should be created for each new job dispatch.
+									if (be_naive)
+										next2 = &(new_node(n, j, j.get_job_index(), state_space_data, state_space_data.earliest_possible_job_release(n, j), state_space_data.earliest_certain_source_job_release(n, j), state_space_data.earliest_certain_sequential_source_job_release(n, j)));
+
+									// if we do not have a pointer to a node with the same set of scheduled job yet,
+									// try to find an existing node with the same set of scheduled jobs. Otherwise, create one.
+									if (next2 == nullptr)
+									{
+										const auto pair_it = nodes_by_key.find(n.next_key(j));
+										if (pair_it != nodes_by_key.end()) {
+											Job_set new_sched_jobs{ n.get_scheduled_jobs(), j.get_job_index() };
+											for (Node_ref other : pair_it->second) {
+												if (other->get_scheduled_jobs() == new_sched_jobs)
+												{
+													next2 = other;
+													DM("=== dispatch: next exists." << std::endl);
+													break;
+												}
+											}
+										}
+										// If there is no node yet, create one.
+									if (next2 == nullptr)
+										next2 = &(new_node(n, j, j.get_job_index(), state_space_data, state_space_data.earliest_possible_job_release(n, j), state_space_data.earliest_certain_source_job_release(n, j), state_space_data.earliest_certain_sequential_source_job_release(n, j)));
+									}
 									new_or_merge_state(*next2, *s, j.get_job_index(),
 									Interval<Time>{_st2}, ftimes2, next->get_scheduled_jobs(), next->get_jobs_with_pending_successors(), next->get_ready_successor_jobs(), state_space_data, next->get_next_certain_source_job_release(), Interval<Time>{_st2});
 
