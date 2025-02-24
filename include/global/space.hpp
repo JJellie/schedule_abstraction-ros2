@@ -585,7 +585,17 @@ namespace NP {
 			{
 				Time release = Time_model::constants<Time>::infinity();
 				for (Job_index job : *wait_set) {
-					release = std::min(state_space_data.jobs[job].latest_arrival(), release);
+					Time job_release = state_space_data.jobs[job].latest_arrival();
+					const Job_precedence_set& predecessors = state_space_data.predecessors_of(job);
+					if (n.job_ready(predecessors)) {
+						for (const auto& pred : predecessors) {
+							Interval<Time> ftimes(0, 0);
+							s.get_finish_times(pred, ftimes);
+							job_release = std::max(job_release, ftimes.max());
+						}
+
+					}
+					release = std::min(job_release, release);
 				}
 				// Time t_ws = std::min(s.next_certain_gang_source_job_disptach(), s.next_certain_successor_jobs_disptach());
 				// Time t_wos = n.get_next_certain_sequential_source_job_release();
@@ -694,8 +704,7 @@ namespace NP {
 
 
 						// Twc and Thigh over all jobs in RP
-						Time t_wc = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s));
-						Time t_high_succ = state_space_data.next_certain_higher_priority_successor_job_ready_time(n, *s, j, p, t_wc + 1);
+						Time t_wc = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s));						Time t_high_succ = state_space_data.next_certain_higher_priority_successor_job_ready_time(n, *s, j, p, t_wc + 1);
 						Time t_high_gang = state_space_data.next_certain_higher_priority_gang_source_job_ready_time(n, *s, j, p, t_wc + 1);
 						Time t_high = std::min(t_high_wos, std::min(t_high_gang, t_high_succ));
 
@@ -706,6 +715,8 @@ namespace NP {
 						if (s->ews_contains(j_idx)) {
 							auto bws_wc = s->get_bws(j_idx);
 							auto bws_high = s->get_bws(j_idx);
+							
+							Time lft_pred = 0;
 
 							t_wc_bws = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s, std::move(bws_wc)));
 							t_high_bws = next_certain_higher_priority_waitset_job_ready_time(j, *s, std::move(bws_high));
