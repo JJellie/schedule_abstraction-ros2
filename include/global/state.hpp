@@ -681,7 +681,7 @@ namespace NP {
 			}
 
 			void widen_polling_point(const Interval<Time> other_pp) {
-				polling_point_interval.merge(other_pp);
+				polling_point_interval.widen(other_pp);
 			}
 
 			void widen_finish_times(const Job_finish_times& from_pwj)
