@@ -149,7 +149,7 @@ namespace NP {
 				
 				// NOTE: must be done after updating last job prio
 				update_lp(ready_succ_jobs, state_space_data, scheduled_jobs);
-				update_gws_ews();
+				update_gws_ews(state_space_data, ready_succ_jobs);
 
 				DM("*** new state: constructed " << *this << std::endl);
 			}
@@ -403,15 +403,41 @@ namespace NP {
 				return;
 			}
 
-			void update_gws_ews() {
+			void update_gws_ews(const State_space_data<Time>& state_space_data, const std::vector<const Job<Time>*>& ready_succ_jobs) {
 				for (auto job: lower_priority) {
-					if (job->latest_arrival() <= polling_point_interval.from()) {
+					Interval<Time> R(0,0);
+					R.equate(job->arrival_window());
+					const Job_precedence_set& predecessors = state_space_data.predecessors_of(*job);
+					if (predecessors.size() != 0) {
+						// If job is a successor (as pred != 0) but not in ready successor jobs it's not ready so not in the waitsets
+						if (std::find(ready_succ_jobs.begin(), ready_succ_jobs.end(), job) == ready_succ_jobs.end()) {
+							continue;
+						} else {
+							// Job has successors, so Rmax is dependent on their finish tiems
+							auto stimes = min_max_predecessor_job_finish_times(predecessors, *job);
+							R.extend_to(stimes.second);
+							R.lower_bound(stimes.first);
+						}
+					}
+					if (R.max() <= polling_point_interval.from()) {
 						guaranteed_wait_set.add(job->get_job_index());
 					}
-					if (job->earliest_arrival() <= polling_point_interval.until()) {
+					if (R.min() <= polling_point_interval.until()) {
 						exhaustive_wait_set.add(job->get_job_index());
 					}
 				}
+			}
+
+			std::pair<Time, Time> min_max_predecessor_job_finish_times(const Job_precedence_set& predecessors, const Job<Time>& j) {
+				Time latest_release = 0;
+				Time earliest_release = 0;
+				for (Job_index pred : predecessors) {
+						Interval<Time> ftimes(0, 0);
+						get_finish_times(pred, ftimes);
+						latest_release = std::max(latest_release, ftimes.max());
+						earliest_release = std::max(earliest_release, ftimes.min());
+					}
+				return std::make_pair(earliest_release, latest_release);
 			}
 
 			void update_polling_point(const Schedule_state& from, bool new_pp,
