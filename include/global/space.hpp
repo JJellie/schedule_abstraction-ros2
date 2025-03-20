@@ -716,7 +716,7 @@ namespace NP {
 						if (s->ews_contains(j_idx)) {
 							auto bws_wc = s->get_bws(j_idx);
 							auto bws_high = s->get_bws(j_idx);
-							
+							RDM("BWS of T" << j.get_task_id() << " with idx " << j.get_job_index()  << ": " <<  *bws_wc << "\n");
 							Time lft_pred = 0;
 
 							t_wc_bws = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s, std::move(bws_wc)));
@@ -745,7 +745,7 @@ namespace NP {
 							if (s->is_gws_empty()) {
 								// Eligibility based on bws and rp
 								_st.second = std::max(_st2.second, _st.second);
-								if (_st.first > _st.second) continue;
+								if (_st.first >= _st.second) continue;
 							} else {
 								//Elibility based on bws
 								if (_st.first > t_wc_bws || _st.first >= t_high_bws) continue;
@@ -842,8 +842,12 @@ namespace NP {
 						// _st = {EST(Rp), LST(Rp)}, _st2 = {EST(BWS), LST(BWS)}
 						if (s->ews_contains(j_idx)) {
 							if (!(s->is_gws_empty())) {
-								// LST = min {twc(bws), thigh(bws)}
 								_st.second = _st2.second;
+								eft = _st.first + exec_time.min();
+								lft = _st.second + exec_time.max();
+								// check for possible abort actions
+								ftimes = calculate_abort_time(j, _st.first, _st.second, eft, lft);
+								// LST = min {twc(bws), thigh(bws)}
 
 								// Not empty, so simple state
 								new_or_merge_state(*next, *s, j.get_job_index(),
