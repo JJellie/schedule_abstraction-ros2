@@ -716,7 +716,6 @@ namespace NP {
 						if (s->ews_contains(j_idx)) {
 							auto bws_wc = s->get_bws(j_idx);
 							auto bws_high = s->get_bws(j_idx);
-							RDM("BWS of T" << j.get_task_id() << " with idx " << j.get_job_index()  << ": " <<  *bws_wc << "\n");
 							Time lft_pred = 0;
 
 							t_wc_bws = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s, std::move(bws_wc)));
@@ -738,6 +737,9 @@ namespace NP {
 						Time lst_rp = _st.second;
 						// If job is not in EWS, standard eligibility condition holds
 						if (!(s->ews_contains(j_idx))) {
+							// If gws still has jobs, no pp could ever occur so we skip this job not in ews
+							if (!s->is_gws_empty()) continue;
+							// Else only jobs able to be dispatched can go
 							if (_st.first > t_wc || _st.first >= t_high || _st.first >= t_avail)
 								continue; // nope, not next job that can be dispatched in state s, try the next state.
 						} else {

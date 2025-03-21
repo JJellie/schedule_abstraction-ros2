@@ -405,6 +405,7 @@ namespace NP {
 
 			void update_gws_ews(const State_space_data<Time>& state_space_data, const std::vector<const Job<Time>*>& ready_succ_jobs) {
 				for (auto job: lower_priority) {
+					Interval<Time> RealR = state_space_data.ready_times(*this, *job);
 					Interval<Time> R(0,0);
 					R.equate(job->arrival_window());
 					const Job_precedence_set& predecessors = state_space_data.predecessors_of(*job);
@@ -425,6 +426,7 @@ namespace NP {
 					if (R.min() <= polling_point_interval.until()) {
 						exhaustive_wait_set.add(job->get_job_index());
 					}
+					
 				}
 			}
 
