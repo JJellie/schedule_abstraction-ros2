@@ -405,21 +405,7 @@ namespace NP {
 
 			void update_gws_ews(const State_space_data<Time>& state_space_data, const std::vector<const Job<Time>*>& ready_succ_jobs) {
 				for (auto job: lower_priority) {
-					Interval<Time> RealR = state_space_data.ready_times(*this, *job);
-					Interval<Time> R(0,0);
-					R.equate(job->arrival_window());
-					const Job_precedence_set& predecessors = state_space_data.predecessors_of(*job);
-					if (predecessors.size() != 0) {
-						// If job is a successor (as pred != 0) but not in ready successor jobs it's not ready so not in the waitsets
-						if (std::find(ready_succ_jobs.begin(), ready_succ_jobs.end(), job) == ready_succ_jobs.end()) {
-							continue;
-						} else {
-							// Job has successors, so Rmax is dependent on their finish tiems
-							auto stimes = min_max_predecessor_job_finish_times(predecessors, *job);
-							R.extend_to(stimes.second);
-							R.lower_bound(stimes.first);
-						}
-					}
+					Interval<Time> R = state_space_data.ready_times(*this, *job);
 					if (R.max() <= polling_point_interval.from()) {
 						guaranteed_wait_set.add(job->get_job_index());
 					}
