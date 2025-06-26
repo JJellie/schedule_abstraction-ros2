@@ -4,6 +4,7 @@
 #include "jobs.hpp"
 #include "precedence.hpp"
 #include "aborts.hpp"
+#include "exclusion.hpp"
 
 namespace NP {
 
@@ -14,7 +15,7 @@ namespace NP {
 		typedef typename Job<Time>::Job_set Workload;
 		typedef typename std::vector<Abort_action<Time>> Abort_actions;
 		typedef typename std::vector<Precedence_constraint<Time>> Precedence_constraints;
-
+		typedef typename std::vector<TaskExclusionGroup<Time>> Exclusion_groups;
 		// ** Description of the workload:
 		// (1) a set of jobs
 		Workload jobs;
@@ -22,6 +23,8 @@ namespace NP {
 		Precedence_constraints prec;
 		// (3) abort actions for (some of) the jobs
 		Abort_actions aborts;
+		// (4) sets of tasks that cannot run simulatenously
+		Exclusion_groups exclusions;
 
 		// ** Platform model:
 		// on how many (identical) processors are the jobs being
@@ -51,6 +54,19 @@ namespace NP {
 			assert(num_processors > 0);
 			validate_prec_cstrnts<Time>(this->prec, jobs);
 			validate_abort_refs<Time>(aborts, jobs);
+		}
+
+		// Constructer for exclusion constraints (ROS2 Does not have abourt actions)
+		Scheduling_problem(const Workload& jobs, const Precedence_constraints& prec,
+						   const Exclusion_groups& excl, 
+		                   unsigned int num_processors = 1)
+		: num_processors(num_processors)
+		, jobs(jobs)
+		, prec(prec)
+		, exclusions(excl)
+		{
+			assert(num_processors > 0);
+			validate_prec_cstrnts<Time>(this->prec, jobs);
 		}
 
 		// Convenience constructor: no DAG, no abort actions

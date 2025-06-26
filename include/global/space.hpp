@@ -675,7 +675,7 @@ namespace NP {
 				}
 			}
 
-			// TODO: Add new computations of EST, LST from ROS paper
+
 			bool dispatch(const Node& n, const Job<Time>& j, Time t_wc_wos, Time t_high_wos)
 			{
 				// All states in node 'n' for which the job 'j' is eligible will 
@@ -694,6 +694,11 @@ namespace NP {
 #endif
 				for (State* s : *n_states)
 				{
+					// if the job priority is lower than than the minimum priority of the next dispatched job, it will not be dispatched next
+					// (remember that lower number means higher priority)
+					Job_ref next_dispatch_min_prio = s->get_next_dispatched_job_min_priority();
+					if (next_dispatch_min_prio != NULL && next_dispatch_min_prio->higher_priority_than(j))
+						continue;
 					const auto& costs = j.get_all_costs();
 					// check for all possible parallelism levels of the moldable gang job j (if j is not gang or not moldable than min_paralellism = max_parallelism and costs only constains a single element).
 					//for (unsigned int p = j.get_max_parallelism(); p >= j.get_min_parallelism(); p--)
@@ -702,12 +707,13 @@ namespace NP {
 						unsigned int p = it->first;
 						Job_index j_idx = j.get_job_index();
 
-
-
 						// Twc and Thigh over all jobs in RP
-						Time t_wc = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s));						Time t_high_succ = state_space_data.next_certain_higher_priority_successor_job_ready_time(n, *s, j, p, t_wc + 1);
+						Time t_wc = std::max(s->core_availability().max(), next_certain_job_ready_time(n, *s));		
+						Time t_high_succ = state_space_data.next_certain_higher_priority_successor_job_ready_time(n, *s, j, p, t_wc + 1);
 						Time t_high_gang = state_space_data.next_certain_higher_priority_gang_source_job_ready_time(n, *s, j, p, t_wc + 1);
+						Time t_high_wos = state_space_data.next_certain_higher_priority_seq_source_job_release(n, *s, j, t_wc + 1);
 						Time t_high = std::min(t_high_wos, std::min(t_high_gang, t_high_succ));
+
 
 						// If j in EWS then twc and thigh are based on BWS
 						Time t_wc_bws;
@@ -839,7 +845,6 @@ namespace NP {
 						// next should always exist at this point, possibly without states in it
 						// create a new state resulting from scheduling j in state s on p cores and try to merge it with an existing state in node 'next'.							
 						
-						// TODO: Implement ROS dispatching
 						// If two states are made remember to call new_or_merge_state twice
 						// _st = {EST(Rp), LST(Rp)}, _st2 = {EST(BWS), LST(BWS)}
 						if (s->ews_contains(j_idx)) {
@@ -967,7 +972,8 @@ namespace NP {
 					if (!unfinished(n, j))
 						continue;
 
-					Time t_high_wos = state_space_data.next_certain_higher_priority_seq_source_job_release(n, j, upbnd_t_wc + 1);
+					//Time t_high_wos = state_space_data.next_certain_higher_priority_seq_source_job_release(n, j, upbnd_t_wc + 1);
+					Time t_high_wos = Time_model::constants<Time>::infinity();
 					// if there is a higher priority job that is certainly ready before job j is released at the earliest, 
 					// then j will never be the next job dispached by the scheduler
 					if (t_high_wos <= j.earliest_arrival())

@@ -35,6 +35,7 @@ namespace NP {
 			typedef const Job<Time>* Job_ref;
 			typedef std::vector<Job_index> Job_precedence_set;
 			typedef std::vector<std::pair<Job_ref, Interval<Time>>> Suspensions_list;
+			typedef std::vector<std::vector<Job_index>> Exclusion_matrix;
 
 		private:
 			typedef std::multimap<Time, Job_ref> By_time_map;
@@ -51,6 +52,10 @@ namespace NP {
 			std::vector<Suspensions_list> _predecessors_suspensions;
 			std::vector<Suspensions_list> _successors_suspensions;
 
+			// ROS2 mutual exclusion groups
+			// 2d boolean vector of size jobs x jobs 
+		    Exclusion_matrix _exclusion_constraints = { {0,1,2,3,4,5}, {0,1,2,3,4,5}, {}, {} };
+	
 			// list of actions when a job is aborted
 			std::vector<const Abort_action<Time>*> abort_actions;
 
@@ -58,6 +63,7 @@ namespace NP {
 			const unsigned int num_cpus;
 		
 		public:
+			std::vector<bool> is_exclusive_job = {true, true, true, true, true, true, false, false, false};
 			// use these const references to ensure read-only access
 			const Workload& jobs;
 			const By_time_map& jobs_by_earliest_arrival;
@@ -68,6 +74,8 @@ namespace NP {
 			const std::vector<Job_precedence_set>& predecessors;
 			const std::vector<Suspensions_list>& predecessors_suspensions;
 			const std::vector<Suspensions_list>& successors_suspensions;
+
+			const Exclusion_matrix& exclusion_constraints;
 
 			State_space_data(const Workload& jobs,
 				const Precedence_constraints& edges,
@@ -87,6 +95,8 @@ namespace NP {
 				, predecessors_suspensions(_predecessors_suspensions)
 				, successors_suspensions(_successors_suspensions)
 				, abort_actions(jobs.size(), NULL)
+				// , _exclusion_constraints(jobs.size())
+				, exclusion_constraints(_exclusion_constraints)
 			{
 				for (const auto& e : edges) {
 					_predecessors_suspensions[e.get_toIndex()].push_back({ &jobs[e.get_fromIndex()], e.get_suspension() });
@@ -149,6 +159,13 @@ namespace NP {
 					r.lower_bound(ft.min() + pred_susp.min());
 					r.extend_to(ft.max() + pred_susp.max());
 				}
+				for (const auto& exclusion : exclusion_constraints[j.get_task_id()-1]) {
+					Interval<Time> ft{ 0, 0 };
+					if (!s.get_certain_ft(exclusion, ft)) continue;
+					r.lower_bound(ft.min());
+					r.extend_to(ft.max());
+				}
+				
 				return r;
 			}
 
@@ -195,6 +212,13 @@ namespace NP {
 						r.lower_bound(ft.min() + pred_susp.min());
 						r.extend_to(ft.max() + pred_susp.max());
 					}
+				}
+
+				for (const auto& exclusion : exclusion_constraints[j.get_task_id()-1]) {
+					Interval<Time> ft{ 0, 0 };
+					s.get_finish_times(exclusion, ft);
+					r.lower_bound(ft.min());
+					r.extend_to(ft.max());
 				}
 				return r;
 			}
@@ -260,7 +284,40 @@ namespace NP {
 				}
 				return when;
 			}
+			
+			Time next_certain_higher_priority_seq_source_job_release(
+				const Node& n,
+				const State& s,
+				const Job<Time>& reference_job,
+				Time until = Time_model::constants<Time>::infinity()) const
+			{
+				Time when = until;
 
+				// a higher priority source job cannot be released before 
+				// a source job of any priority is released
+				Time t_earliest = n.get_next_certain_source_job_release();
+
+				for (auto it = sequential_source_jobs_by_latest_arrival.lower_bound(t_earliest);
+					it != sequential_source_jobs_by_latest_arrival.end(); it++)
+				{
+					const Job<Time>& j = *(it->second);
+					Interval<Time> rt = ready_times(s, j);
+
+					// check if we can stop looking
+					if (when < rt.max())
+						break; // yep, nothing can lower 'when' at this point
+
+					// j is not relevant if it is already scheduled or not of higher priority
+					if (unfinished(n, j) && j.higher_priority_than(reference_job))
+					{
+						when = rt.max();
+						// Jobs are ordered by latest_arrival, so next jobs are later. 
+						// We can thus stop searching.
+						break;
+					}
+				}
+				return when;
+			}
 			// Find next time by which a gang source job (i.e., 
 			// a job without predecessors that cannot execute on a single core) 
 			// of higher priority than the reference_job
